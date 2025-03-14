@@ -1,0 +1,115 @@
+Below, there are two types of models shown 
+    -BaseModelInstance:
+        This is one with name nuke
+        We use these for specifying user request schema
+        For example below in queries we have used this in function params
+        Here it acts as a parser for data in user request
+        If parsed then data is assigned to all params of this class and function works as defined else throws error 
+        Then we can also use it in queries for data mentioning like in update and insert we can directly give converted divtionary of this 
+    
+        class nuke(BaseModel):  -looks like this
+            id:int
+            data:str
+
+    -Database model
+        This is used to define database tables 
+        It includes tablename and column definations
+
+        class nuke(Base):       -looks like this
+            __tablename__ = 'nuke'
+            id = Column(Integer,primary_key=True,nullable=False)
+            data = Column(String,nullable=False)
+
+ORM creation:
+    from sqlalchemy import Column, Integer, String
+    from .database import Base
+
+    1.Using SQLAlchemy create a class- this will be used for schema of table
+    2.Now in this class declare variable __tablename__ and assign table name as string fromat to it
+        ex:__tablename__="royal" this declares the table name as royal
+    3.Now add table columns using Column class of SQLAlchemy 
+        In this columns add datatype as first parameter and then others with parameter name (primary key, nullable, defaults etc...)
+        The datatype in column will also be from SQLAlchemy (as can be seen in import)
+    4.Now in main file imort this model and add following codeline:
+        models.Base.metadata.create_all(bind=engine)
+
+    Here bind=engine is from database file, here is how it will be...
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.ext.declarative import declarative_base
+    from sqlalchemy.orm import sessionmaker
+
+    1.Add database url link for connecting and operating with database
+        link format: dialect://username:password@host:port/database
+        ex: postgresql://postgres:12345678@localhost/vas
+    2.create engine using this link
+        engine = create_engine(dabase_url)
+    3.SessionLocal = sessionmaker(autocommit=False,autoflush=False,bind=engine)
+        Base = declarative_base()
+    4.def get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    main:
+    from fastapi import Depends, FastAPI
+    from . import models
+    from .database import engine,get_db
+    from sqlalchemy.orm import Session
+
+    models.Base.metadata.create_all(bind=engine) 
+    - this will connect db if tables defined in models exist or not, 
+        if they do then it will do nothing else create them
+    
+ORM Queries:
+    In ORM databse quries are not like normal sql quries but there are python functions
+    SQLAlchemy is used for quries, it has many functions that allow us to perform CRUD on tables without writing single line of sql Query
+    Above we saw how to create table now how to Read, update and Delete from table
+    1.Read
+        def read(id:int, db: Session =Depends(get_db)): - this dependency statment is needed to add everytime get_db connects to database
+            data = db.query(models.nuke).all() - this retrives all rows of all columns from table nuke
+            data = db.query(model.nuke).filter(models.post.id=id).first() - retrives row with specific column value and first fun ensures only one row is returned
+            return data
+    2.Insert
+        def insert(var:BaseModelInstance,db: Session =Depends(get_db)): -here is basemodel 
+            new_row = models.nuke(xtra = var.xtra)                      -here is table schema model 
+            .                                                           - create variable of nuke class and assign param values from received data
+            
+            #row.dict() converts class obj into dict and then with ** opened/unfolded it and automatically assigned all params
+            #when there are too many columns it is hard to assign all params manually and this unfolding automatically does it
+            new_row = models.nuke(**row.dict())     
+            
+            db.add(new_row)                      - add variable in row to insert in table
+            db.commit()                          - commit to save changes in table(this will add row in table) 
+            db.refresh(new_row)                  - refreshes variable and assign it row stored in table
+            return new_row                          
+            
+        sometimes there are default values for some columns which we may not have mentione in variable,
+        So refresh function assigns all values stored in table and shows us the actual row that was stored in table
+        For example if there is time column and is set default to current time now we dont need to assign value to it so we wont know what was stored in table
+        So in that case this fun helps us to know what was actually stored in the row
+        In simple words we can say that this is like select query function in which we dont need to pass condition for getting row
+    
+    3.Delete
+        def delete(id:int,db: Session =Depends(get_db)):                                -Delete is always done using id or pripamry key
+            data = db.query(models.nuke).filter(models.nuke.id==id)
+            
+            if data.first() ==None:                                                     -For deleting first check wheather the record with for given primary key exist or not
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,              -If not then raise exception like this
+                                    detail=f"Post with id = {id} does not exist")
+            
+            data.delete(synchronize_session=False)                                      -Else delete the record with these...
+            db.commit()
+            return "Success"
+    
+    4.Update
+        def update(id: int, nuke: nuke, db: Session = Depends(get_db)):
+            x = db.query(models.nuke).filter(models.nuke.id==id)
+            y = x.first()
+            if y== None:                                                                -Like delete check for existence of record in db
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                    detail=f"Post with id = {id} does not exist")
+            x.update(nuke.dict(), synchronize_session=False)                            -if it is there...
+            db.commit()
