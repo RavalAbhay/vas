@@ -1,7 +1,7 @@
 from fastapi import Depends, FastAPI, HTTPException,status
 from . import models
 from .database import engine,get_db
-from .schema import nuke
+from .basemodel import nuke
 from sqlalchemy.orm import Session
 # import psycopg2
 
